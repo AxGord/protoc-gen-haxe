@@ -1,11 +1,11 @@
 // Copyright (c) 2013, 杨博 (Yang Bo)
 // All rights reserved.
-// 
+//
 // Author: 杨博 (Yang Bo) <pop.atry@gmail.com>
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
-// 
+//
 // * Redistributions of source code must retain the above copyright notice,
 //   this list of conditions and the following disclaimer.
 // * Redistributions in binary form must reproduce the above copyright notice,
@@ -14,7 +14,7 @@
 // * Neither the name of the <ORGANIZATION> nor the names of its contributors
 //   may be used to endorse or promote products derived from this software
 //   without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 // AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 // IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -28,9 +28,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 package com.dongxiguo.protobuf.compiler;
-using Type;
-import com.dongxiguo.protobuf.Error;
-import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptorProto.Type;
+import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptorProto.Label;
 import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.EnumDescriptorProto;
 import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.EnumValueDescriptorProto;
 import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.DescriptorProto;
@@ -51,7 +49,8 @@ import haxe.ds.StringMap;
 #else
 private typedef StringMap<Value> = Hash<Value>;
 #end
-
+private typedef ProtobufType = com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptorProto.Type;
+private typedef ProtobufError = com.dongxiguo.protobuf.Error;
 /**
  * @author 杨博
  */
@@ -196,46 +195,6 @@ private typedef StringMap<Value> = Hash<Value>;
     }
   }
 
-  static function parseDefaultValue(field:FieldDescriptorProto):Dynamic
-  {
-    switch (field.type)
-    {
-      case Type.TYPE_BYTES:
-      {
-        return Parser.parseBytes(field.defaultValue);
-      }
-      case Type.TYPE_STRING:
-      {
-        return field.defaultValue;
-      }
-      case Type.TYPE_INT32, Type.TYPE_UINT32, Type.TYPE_FIXED32, Type.TYPE_SFIXED32, Type.TYPE_SINT32:
-      {
-        return Std.parseInt(field.defaultValue);
-      }
-      case Type.TYPE_BOOL:
-      {
-        switch (field.defaultValue)
-        {
-          case "true": return true;
-          case "false": return false;
-          default: throw 'TYPE_BOOL must not be "true" or "false"';
-        }
-      }
-      case Type.TYPE_DOUBLE, Type.TYPE_FLOAT:
-      {
-        return Std.parseFloat(field.defaultValue);
-      }
-      case Type.TYPE_INT64, Type.TYPE_UINT64, Type.TYPE_FIXED64, Type.TYPE_SFIXED64, Type.TYPE_SINT64:
-      {
-        return Parser.parseInt64(field.defaultValue);
-      }
-      default:
-      {
-        throw '${field.type} must not have default value';
-      }
-    }
-  }
-
   @:noUsing
   public static function makeDefaultValueExpr(
     enclosingMessage:String,
@@ -245,16 +204,16 @@ private typedef StringMap<Value> = Hash<Value>;
   {
     switch (field.type)
     {
-      case Type.TYPE_BYTES:
+      case ProtobufType.TYPE_BYTES:
       {
         var defaultValueStringExpr =
         {
           pos: makeMacroPosition(),
           expr: EConst(CString(field.defaultValue)),
         };
-        return macro com.dongxiguo.protobuf.EscapedBytesParser.parseBytes($defaultValueStringExpr);
+        return macro com.dongxiguo.protobuf.compiler.Parser.parseBytes($defaultValueStringExpr);
       }
-      case Type.TYPE_ENUM:
+      case ProtobufType.TYPE_ENUM:
       {
         var typeName = resolve(enumMap, enclosingMessage, field.typeName);
         var haxeNameParts = nameConverter.getHaxePackage(field.typeName);
@@ -262,16 +221,16 @@ private typedef StringMap<Value> = Hash<Value>;
         haxeNameParts.push(nameConverter.toHaxeEnumConstructorName(field.defaultValue));
         return ExprTools.toFieldExpr(haxeNameParts);
       }
-      case Type.TYPE_INT64, TYPE_UINT64, TYPE_FIXED64, TYPE_SFIXED64, TYPE_SINT64:
+      case ProtobufType.TYPE_INT64, ProtobufType.TYPE_UINT64, ProtobufType.TYPE_FIXED64, ProtobufType.TYPE_SFIXED64, ProtobufType.TYPE_SINT64:
       {
         var defaultValueStringExpr =
         {
           pos: makeMacroPosition(),
           expr: EConst(CString(field.defaultValue)),
         };
-        return macro com.dongxiguo.protobuf.Int64Parser.parseInt64($defaultValueStringExpr);
+        return macro com.dongxiguo.protobuf.compiler.Parser.parseInt64($defaultValueStringExpr);
       }
-      case Type.TYPE_INT32, Type.TYPE_UINT32, Type.TYPE_FIXED32, Type.TYPE_SFIXED32, Type.TYPE_SINT32:
+      case ProtobufType.TYPE_INT32, ProtobufType.TYPE_SFIXED32, ProtobufType.TYPE_SINT32:
       {
         return
         {
@@ -279,7 +238,42 @@ private typedef StringMap<Value> = Hash<Value>;
           expr: EConst(CInt(field.defaultValue)),
         };
       }
-      case Type.TYPE_BOOL:
+      case ProtobufType.TYPE_UINT32, ProtobufType.TYPE_FIXED32:
+      {
+        // 不能使用EConst(CInt(field.defaultValue))，因为可能会溢出。
+        var valueExpr =
+        {
+          pos: makeMacroPosition(),
+          expr: EConst(CFloat(field.defaultValue)),
+        };
+        return
+        {
+          pos: makeMacroPosition(),
+          expr: ECheckType(
+            #if macro
+              if (Context.defined("cpp"))
+              {
+                // Workaround https://github.com/HaxeFoundation/haxe/issues/2174
+                macro cast com.dongxiguo.protobuf.compiler.Parser.reformatFloatLiteral($valueExpr);
+              }
+              else
+              {
+                macro cast $valueExpr;
+              }
+            #else
+              macro cast $valueExpr
+            #end
+            ,
+            TPath(
+              {
+                pack: [ "com", "dongxiguo", "protobuf" ],
+                name: "Types",
+                sub: getTypeName(field.type),
+                params: [],
+              })),
+        };
+      }
+      case ProtobufType.TYPE_BOOL:
       {
         return
         {
@@ -287,204 +281,90 @@ private typedef StringMap<Value> = Hash<Value>;
           expr: EConst(CIdent(field.defaultValue)),
         }
       }
-      case Type.TYPE_DOUBLE, Type.TYPE_FLOAT:
+      case ProtobufType.TYPE_DOUBLE, ProtobufType.TYPE_FLOAT:
       {
-        return
+        return switch (field.defaultValue)
         {
-          pos: makeMacroPosition(),
-          expr: EConst(CFloat(field.defaultValue)),
+          case "nan":
+          {
+            macro Math.NaN;
+          }
+          case "inf":
+          {
+            macro Math.POSITIVE_INFINITY;
+          }
+          case "-inf":
+          {
+            macro Math.NEGATIVE_INFINITY;
+          }
+          default:
+          {
+            pos: makeMacroPosition(),
+            expr: EConst(CFloat(field.defaultValue)),
+          }
         }
       }
-      case Type.TYPE_STRING:
+      case ProtobufType.TYPE_STRING:
       {
-        return
-        {
-          pos: makeMacroPosition(),
-          expr: EConst(CString(field.defaultValue)),
-        }
+        #if macro
+          if (Context.defined("js"))
+          {
+            // Workaround for https://github.com/HaxeFoundation/haxe/issues/1581
+            var quotedStringExpr =
+            {
+              pos: makeMacroPosition(),
+              expr: EConst(CString(haxe.Json.stringify(field.defaultValue))),
+            }
+            return macro untyped __js__($quotedStringExpr);
+          }
+          else
+          {
+            return
+            {
+              pos: makeMacroPosition(),
+              expr: EConst(CString(field.defaultValue)),
+            }
+          }
+        #else
+          return
+          {
+            pos: makeMacroPosition(),
+            expr: EConst(CString(field.defaultValue)),
+          }
+        #end
       }
       default:
       {
-        throw '${field.type} must not have default value';
+        // '${field.type} must not have a default value';
+        throw ProtobufError.BadDescriptor;
       }
     }
   }
 
-  public function getRealEnumClassDefinition(
+  macro static function makeMacroPosition():ExprOf<Position>
+  {
+    var positionExpr = Context.makeExpr(Context.getPosInfos(Context.currentPos()), Context.currentPos());
+    if (haxe.macro.Context.defined("macro"))
+    {
+      return macro haxe.macro.Context.makePosition($positionExpr);
+    }
+    else
+    {
+      return positionExpr;
+    }
+  }
+
+  public function getEnumDefinition(
     fullName:String,
-    enumParserNameConverter:NameConverter.UtilityNameConverter,
     enumNameConverter:NameConverter.EnumNameConverter):TypeDefinition
   {
     var haxeEnumName = enumNameConverter.getHaxeEnumName(fullName);
     var haxeEnumPackage = enumNameConverter.getHaxePackage(fullName);
-    var enumPackageExpr = ExprTools.toFieldExpr(haxeEnumPackage);
-    var enumExpr = macro $enumPackageExpr.$haxeEnumName;
-
-    var valueOfCases =
+    var fields:Array<Field> =
     [
-      for (value in this.enums.get(fullName).value)
       {
-        var constructorName = enumNameConverter.toHaxeEnumConstructorName(value.name);
-        {
-          guard: null,
-          values:
-          [
-            {
-              pos: makeMacroPosition(),
-              expr: EConst(CInt(Std.string(value.number))),
-            }
-          ],
-          expr: macro { $enumExpr.$constructorName; },
-        }
-      }
-    ];
-
-    var getNumberCases =
-    [
-      for (value in this.enums.get(fullName).value)
-      {
-        var constructorName = enumNameConverter.toHaxeEnumConstructorName(value.name);
-        {
-          guard: null,
-          values: [ macro $enumExpr.$constructorName, ],
-          expr:
-          {
-            pos: makeMacroPosition(),
-            expr: EConst(CInt(Std.string(value.number))),
-          },
-        }
-      }
-    ];
-
-    return
-    {
-      pack: enumParserNameConverter.getHaxePackage(fullName),
-      name: enumParserNameConverter.getHaxeClassName(fullName),
-      pos: makeMacroPosition(),
-      meta: [],
-      params: [],
-      isExtern: false,
-      kind: TDClass(),
-      fields:
-      [
-        {
-          name: "getNumber",
-          access: [ AStatic, APublic ],
-          meta: [],
-          pos: makeMacroPosition(),
-          kind: FFun(
-            {
-              args:
-              [
-                {
-                  name: "enumValue",
-                  opt: false,
-                  type: TPath(
-                    {
-                      pack: haxeEnumPackage,
-                      name: haxeEnumName,
-                      params: [],
-                    }),
-                }
-              ],
-              ret: TPath(
-                {
-                  pack: [],
-                  name: "StdTypes",
-                  sub: "Int",
-                  params: [],
-                }),
-              expr:
-              {
-                pos: makeMacroPosition(),
-                expr: EReturn(
-                  {
-                    pos: makeMacroPosition(),
-                    expr: ESwitch(macro enumValue, getNumberCases, null),
-                  }),
-              },
-              params: [],
-            }),
-        },
-        {
-          name: "valueOf",
-          access: [ AStatic, APublic ],
-          meta: [],
-          pos: makeMacroPosition(),
-          kind: FFun(
-            {
-              args:
-              [
-                {
-                  name: "number",
-                  opt: false,
-                  type: TPath(
-                    {
-                      pack: [],
-                      name: "StdTypes",
-                      sub: "Int",
-                      params: [],
-                    }),
-                }
-              ],
-              ret: TPath(
-                {
-                  pack: haxeEnumPackage,
-                  name: haxeEnumName,
-                  params: [],
-                }),
-              expr:
-              {
-                pos: makeMacroPosition(),
-                expr: EReturn(
-                  {
-                    pos: makeMacroPosition(),
-                    expr: ESwitch(
-                      macro number,
-                      valueOfCases,
-                      macro { throw "Unknown enum value: " + number; } ),
-                  }),
-              },
-              params: [],
-            }),
-        }
-      ],
-    };
-
-  }
-
-
-  public function getFakeEnumClassDefinition(
-    fullName:String,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
-    enumNameConverter:NameConverter.EnumNameConverter):TypeDefinition
-  {
-    var enumProto = enums.get(fullName);
-    var fields:Array<Field> = [];
-    for (value in enumProto.value)
-    {
-      fields.push(
-        {
-          access: [ AStatic, APublic, ],
-          pos: makeMacroPosition(),
-          name: enumNameConverter.toHaxeEnumConstructorName(value.name),
-          kind: FProp(
-            "default", "never",
-            null,
-            {
-              pos: makeMacroPosition(),
-              expr: EConst(CInt(Std.string(value.number))),
-            }),
-        });
-    }
-
-    var enumPackage = enumNameConverter.getHaxePackage(fullName);
-    var enumName = enumNameConverter.getHaxeEnumName(fullName);
-    var nativeName = enumPackage.concat([enumName]).join(".");
-    fields.push(
-      {
-        name: "valueOf",
-        access: [ AStatic, APublic ],
+        name: "new",
+        access: [ APublic, AInline ],
         meta: [],
         pos: makeMacroPosition(),
         kind: FFun(
@@ -503,37 +383,35 @@ private typedef StringMap<Value> = Hash<Value>;
                   }),
               }
             ],
-            ret: TPath(
-              {
-                pack: enumPackage,
-                name: enumName,
-                params: [],
-              }),
-            expr: macro return cast number,
+            ret: null,
+            expr: macro { this = number; },
             params: [],
-          }),
-      });
-    fields.push(
+          })
+      },
       {
-        name: "getNumber",
-        access: [ AStatic, APublic ],
+        name: "number",
+        access: [ APublic ],
+        meta: [],
+        pos: makeMacroPosition(),
+        kind: FProp(
+          "get",
+          "never",
+          TPath(
+            {
+              pack: [],
+              name: "StdTypes",
+              sub: "Int",
+              params: [],
+            })),
+      },
+      {
+        name: "get_number",
+        access: [ AInline ],
         meta: [],
         pos: makeMacroPosition(),
         kind: FFun(
           {
-            args:
-            [
-              {
-                name: "enumValue",
-                opt: false,
-                type: TPath(
-                  {
-                    pack: enumPackage,
-                    name: enumName,
-                    params: [],
-                  }),
-              }
-            ],
+            args: [],
             ret: TPath(
               {
                 pack: [],
@@ -541,105 +419,80 @@ private typedef StringMap<Value> = Hash<Value>;
                 sub: "Int",
                 params: [],
               }),
-            expr: macro return cast enumValue,
+            expr: macro { return this; },
             params: [],
           }),
-      });
-    return
-    {
-      pack: enumClassNameConverter.getHaxePackage(fullName),
-      name: enumClassNameConverter.getHaxeClassName(fullName),
-      pos: makeMacroPosition(),
-      meta: [{
-          name: ":native",
-          pos: makeMacroPosition(),
-          params:
-          [
-            {
-              pos: makeMacroPosition(),
-              expr: EConst(CString(nativeName)),
-            }
-          ],
-        }],
-      params: [],
-      isExtern: false,
-      kind: TDClass(),
-      fields: fields,
-    };
-  }
-
-  static function makeMacroPosition(?posInfos:PosInfos):Position
-  {
-    #if macro
-    return Context.currentPos();
-    #else
-    return
-    {
-      min: 0,
-      max: 0,
-      file: posInfos.fileName,
-    };
-    #end
-  }
-
-  function getEnumDefinition(
-    fullName:String,
-    enumNameConverter:NameConverter.EnumNameConverter,
-    fakeEnumBehavior:FakeEnumBehavior):TypeDefinition
-  {
-    var fields:Array<Field> = [];
+      },
+    ];
     var enumProto = enums.get(fullName);
     for (value in enumProto.value)
     {
       fields.push(
         {
-          access: [],
+          access: [ AStatic, APublic, ],
           pos: makeMacroPosition(),
           name: enumNameConverter.toHaxeEnumConstructorName(value.name),
-          kind: FVar(null),
+          kind: FProp(
+            "default",
+            "never",
+            null,
+            {
+              pos: makeMacroPosition(),
+              expr: ENew(
+                {
+                  pack: haxeEnumPackage,
+                  name: haxeEnumName,
+                  params: [],
+                },
+                [
+                  {
+                    pos: makeMacroPosition(),
+                    expr: EConst(CInt(Std.string(value.number))),
+                  }
+                ])
+            }),
         });
-    }
-    var isFakeEnum = switch (fakeEnumBehavior)
-    {
-      case FakeEnumBehavior.ALWAYS: true;
-      case FakeEnumBehavior.NEVER: false;
-      case FakeEnumBehavior.ALLOW_ALIAS_ONLY:
-      {
-        enumProto.options == null || enumProto.options.allowAlias;
-      }
     }
     return
     {
-      pack: enumNameConverter.getHaxePackage(fullName),
-      name: enumNameConverter.getHaxeEnumName(fullName),
+      pack: haxeEnumPackage,
+      name: haxeEnumName,
       pos: makeMacroPosition(),
-      meta: isFakeEnum ?
-      [
-        {
-          name: ":fakeEnum",
-          pos: makeMacroPosition(),
-          params: [ macro StdTypes.Int ],
-        }
-      ] : [],
+      meta: [],
       params: [],
-      isExtern: isFakeEnum,
-      kind: TDEnum,
+      isExtern: false,
+      kind: TDAbstract(TPath(
+        {
+          pack: [],
+          name: "StdTypes",
+          sub: "Int",
+          params: [],
+        })),
       fields: fields,
     };
   }
 
-  public function getFakeEnumDefinition(
-    fullName:String,
-    enumNameConverter:NameConverter.EnumNameConverter):TypeDefinition
+  static function getTypeName(type:ProtobufType):String
   {
-    return getEnumDefinition(fullName, enumNameConverter, FakeEnumBehavior.ALWAYS);
-  }
-
-  public function getRealEnumDefinition(
-    fullName:String,
-    enumNameConverter:NameConverter.EnumNameConverter):TypeDefinition
-  {
-    return getEnumDefinition(fullName, enumNameConverter, FakeEnumBehavior.NEVER);
+    return switch (type)
+    {
+      case ProtobufType.TYPE_DOUBLE: "TYPE_DOUBLE";
+      case ProtobufType.TYPE_FLOAT: "TYPE_FLOAT";
+      case ProtobufType.TYPE_INT64: "TYPE_INT64";
+      case ProtobufType.TYPE_UINT64: "TYPE_UINT64";
+      case ProtobufType.TYPE_INT32: "TYPE_INT32";
+      case ProtobufType.TYPE_FIXED64: "TYPE_FIXED64";
+      case ProtobufType.TYPE_BOOL: "TYPE_BOOL";
+      case ProtobufType.TYPE_STRING: "TYPE_STRING";
+      case ProtobufType.TYPE_BYTES: "TYPE_BYTES";
+      case ProtobufType.TYPE_UINT32: "TYPE_UINT32";
+      case ProtobufType.TYPE_FIXED32: "TYPE_FIXED32";
+      case ProtobufType.TYPE_SFIXED32: "TYPE_SFIXED32";
+      case ProtobufType.TYPE_SFIXED64: "TYPE_SFIXED64";
+      case ProtobufType.TYPE_SINT32: "TYPE_SINT32";
+      case ProtobufType.TYPE_SINT64: "TYPE_SINT64";
+      default: throw ProtobufError.BadDescriptor;
+    }
   }
 
   function getMessageDefinition(
@@ -654,7 +507,7 @@ private typedef StringMap<Value> = Hash<Value>;
     {
       switch (protoType)
       {
-        case Type.TYPE_ENUM:
+        case ProtobufType.TYPE_ENUM:
         {
           var fullyQualifiedName = resolve(enums, fullName, protoTypeName);
           return TPath(
@@ -664,7 +517,7 @@ private typedef StringMap<Value> = Hash<Value>;
             pack: enumNameConverter.getHaxePackage(fullyQualifiedName),
           });
         }
-        case Type.TYPE_MESSAGE:
+        case ProtobufType.TYPE_MESSAGE:
         {
           var fullyQualifiedName = resolve(messages, fullName, protoTypeName);
           return TPath(
@@ -676,10 +529,11 @@ private typedef StringMap<Value> = Hash<Value>;
         }
         default:
         {
+          var sub:String = getTypeName(protoType);
           return TPath(
           {
             params: [],
-            sub: protoType.enumConstructor(),
+            sub: sub,
             name: "Types",
             pack: [ "com", "dongxiguo", "protobuf" ],
           });
@@ -713,23 +567,27 @@ private typedef StringMap<Value> = Hash<Value>;
     var constructorBlock = [];
     for (field in messageProto.field)
     {
-      if (field.type == TYPE_GROUP)
+      switch (field.type)
       {
-        #if neko
-        Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+        case ProtobufType.TYPE_GROUP:
         {
-          pos: makeMacroPosition(),
-          expr: EBlock([]),
+          #if neko
+          Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+          {
+            pos: makeMacroPosition(),
+            expr: EBlock([]),
+          }
+          #else
+          trace("TYPE_GROUP is unsupported!");
+          #end
+          continue;
         }
-        #else
-        trace("TYPE_GROUP is unsupported!");
-        #end
-        continue;
+        default:
       }
       var haxeFieldName = messageNameConverter.toHaxeFieldName(field.name);
       switch (field)
       {
-        case { label: LABEL_REQUIRED, defaultValue: defaultValueString, } :
+        case { label: Label.LABEL_REQUIRED, defaultValue: defaultValueString, } :
         {
           fields.push(
           {
@@ -744,7 +602,7 @@ private typedef StringMap<Value> = Hash<Value>;
             constructorBlock.push(macro this.$haxeFieldName = $defaultValueExpr);
           }
         }
-        case { label: LABEL_OPTIONAL, defaultValue: defaultValueString, } :
+        case { label: Label.LABEL_OPTIONAL, defaultValue: defaultValueString, } :
         {
           if (defaultValueString == null)
           {
@@ -850,7 +708,7 @@ private typedef StringMap<Value> = Hash<Value>;
             });
           }
         }
-        case { label: LABEL_REPEATED } :
+        case { label: Label.LABEL_REPEATED } :
         {
           fields.push(
           {
@@ -877,7 +735,7 @@ private typedef StringMap<Value> = Hash<Value>;
         {
           name: "new",
           pos: makeMacroPosition(),
-          access: [ APublic ],
+          access: [ APublic, AInline ],
           kind: FFun(
           {
             ret: null,
@@ -937,22 +795,4 @@ typedef ReadonlyStringMap<Element> =
   function get(key:String):Null<Element>;
   function keys():Iterator<String>;
 }
-
-/** Determine whether a enum from a proto file should be [@:fakeEnum]. */
-private enum FakeEnumBehavior
-{
-
-  /** Every enums in proto packages must be [@:fakeEnum] */
-  ALWAYS;
-
-  /** Every enums in proto packages must not be [@:fakeEnum] */
-  NEVER;
-
-  /**
-    If a enum's allowAlias option is set to true,
-    then enum must be [@:fakeEnum].
-    Otherwise, the enum must not be [@:fakeEnum].
-  **/
-  ALLOW_ALIAS_ONLY;
-
-}
+// vim: et sts=2 sw=2

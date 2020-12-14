@@ -30,6 +30,7 @@
 package com.dongxiguo.protobuf.compiler;
 import com.dongxiguo.protobuf.binaryFormat.WritingBuffer;
 import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.FieldDescriptorProto;
+import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptorProto.Label;
 import com.dongxiguo.protobuf.WireType;
 import haxe.macro.Context;
 import haxe.macro.Expr;
@@ -62,18 +63,17 @@ class Extension
     }
   }
 
-  static function makeMacroPosition(?posInfos:PosInfos):Position
+  macro static function makeMacroPosition():ExprOf<Position>
   {
-    #if macro
-    return Context.currentPos();
-    #else
-    return
+    var positionExpr = Context.makeExpr(Context.getPosInfos(Context.currentPos()), Context.currentPos());
+    if (haxe.macro.Context.defined("macro"))
     {
-      min: 0,
-      max: 0,
-      file: posInfos.fileName,
-    };
-    #end
+      return macro haxe.macro.Context.makePosition($positionExpr);
+    }
+    else
+    {
+      return positionExpr;
+    }
   }
 
   static function getSetterDefinition(
@@ -81,7 +81,6 @@ class Extension
     fullName:String,
     setterNameConverter:NameConverter.PackageExtensionNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     writerNameConverter:NameConverter.UtilityNameConverter,
     field:FieldDescriptorProto):Field
   {
@@ -108,17 +107,13 @@ class Extension
           return macro
           {
             var output = new haxe.io.BytesOutput();
-            $nestedWriterExpr.writeTo(value, output);
+            $nestedWriterExpr.writeTo($valueExpr, output);
             output.getBytes();
           }
         }
         case ProtobufType.TYPE_ENUM:
         {
-          var resolvedFieldTypeName = ProtoData.resolve(self.enums, fullName, field.typeName);
-          var enumPackageExpr = ExprTools.toFieldExpr(enumClassNameConverter.getHaxePackage(resolvedFieldTypeName));
-          var enumClassName = enumClassNameConverter.getHaxeClassName(resolvedFieldTypeName);
-          var nestedEnumClassExpr = packageDotClass(enumPackageExpr, enumClassName);
-          return macro com.dongxiguo.protobuf.unknownField.VarintUnknownField.fromInt32($nestedEnumClassExpr.getNumber(value));
+          return macro com.dongxiguo.protobuf.unknownField.VarintUnknownField.fromInt32($valueExpr.number);
         }
         default:
         {
@@ -145,7 +140,8 @@ class Extension
               throw ProtobufError.InvalidWireType;
             }
           }
-          var fromFunctionName = switch (Type.enumConstructor(field.type).split("_"))
+          var typeName:String = getTypeName(field.type);
+          var fromFunctionName = switch (typeName.split("_"))
           {
             case [ "TYPE", upperCaseTypeName ]:
             {
@@ -193,7 +189,7 @@ class Extension
           {
             switch (field.label)
             {
-              case LABEL_OPTIONAL, LABEL_REQUIRED:
+              case Label.LABEL_OPTIONAL, Label.LABEL_REQUIRED:
               {
                 var nonPackedTagExpr =
                 {
@@ -212,7 +208,7 @@ class Extension
                     }
                     unknownFields.set($nonPackedTagExpr, com.dongxiguo.protobuf.unknownField.UnknownField.fromOptional($unknownFieldValueExpr));
                   }
-                if (field.label == LABEL_REQUIRED)
+                if (field.label == Label.LABEL_REQUIRED)
                 {
                   requiredExpr;
                 }
@@ -237,33 +233,47 @@ class Extension
                   }
                 }
               }
-              case LABEL_REPEATED:
+              case Label.LABEL_REPEATED:
               {
                 if (field.options != null && field.options.packed)
                 {
-                  var writeFunctionName = switch (Type.enumConstructor(field.type).split("_"))
-                  {
-                    case [ "TYPE", upperCaseTypeName ]:
-                    {
-                      "write" + upperCaseTypeName.charAt(0) + upperCaseTypeName.substring(1).toLowerCase();
-                    }
-                    default:
-                    {
-                      throw ProtobufError.MalformedEnumConstructor;
-                    }
-                  }
                   var packedTagExpr =
                   {
                     pos: makeMacroPosition(),
                     expr: EConst(CInt(Std.string(
                       WireType.LENGTH_DELIMITED | (field.number << 3)))),
                   }
+                  var elementExpr = switch (field.type)
+                  {
+                    case ProtobufType.TYPE_ENUM:
+                    {
+                      macro com.dongxiguo.protobuf.binaryFormat.WriteUtils.writeInt32(buffer, element.number);
+                    }
+                    default:
+                    {
+                      var typeName:String = getTypeName(field.type);
+                      var writeFunctionName = switch (typeName.split("_"))
+                      {
+                        case [ "TYPE", upperCaseTypeName ]:
+                        {
+                          "write" + upperCaseTypeName.charAt(0) + upperCaseTypeName.substring(1).toLowerCase();
+                        }
+                        default:
+                        {
+                          throw ProtobufError.MalformedEnumConstructor;
+                        }
+                      }
+                      macro com.dongxiguo.protobuf.binaryFormat.WriteUtils.$writeFunctionName(buffer, element);
+                    }
+                  }
                   macro
                   {
                     var buffer = new com.dongxiguo.protobuf.binaryFormat.WritingBuffer();
+                    inline function dummy<T>(i:Iterable<T>) { }
+                    dummy(value);
                     for (element in value)
                     {
-                      com.dongxiguo.protobuf.binaryFormat.WriteUtils.$writeFunctionName(buffervalue);
+                      $elementExpr;
                     }
                     var bytes = buffer.getBytes();
                     if (bytes.length > 0)
@@ -316,6 +326,10 @@ class Extension
                   }
                 }
               }
+              default:
+              {
+                throw ProtobufError.BadDescriptor;
+              }
             }
           },
         }),
@@ -327,7 +341,6 @@ class Extension
     fullName:String,
     setterNameConverter:NameConverter.PackageExtensionNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     writerNameConverter:NameConverter.UtilityNameConverter):Null<TypeDefinition>
   {
     var fields:Array<Field> =
@@ -336,25 +349,28 @@ class Extension
       {
         for (field in file.extension)
         {
-          if (field.type == TYPE_GROUP)
+          switch (field.type)
           {
-            #if neko
-            Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+            case ProtobufType.TYPE_GROUP:
             {
-              pos: makeMacroPosition(),
-              expr: EBlock([]),
+              #if neko
+              Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+              {
+                pos: makeMacroPosition(),
+                expr: EBlock([]),
+              }
+              #else
+              trace("TYPE_GROUP is unsupported!");
+              #end
+              continue;
             }
-            #else
-            trace("TYPE_GROUP is unsupported!");
-            #end
-            continue;
+            default:
           }
           getSetterDefinition(
             self,
             fullName,
             setterNameConverter,
             builderNameConverter,
-            enumClassNameConverter,
             writerNameConverter,
             field);
         }
@@ -382,7 +398,6 @@ class Extension
     fullName:String,
     setterNameConverter:NameConverter.MessageNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     writerNameConverter:NameConverter.UtilityNameConverter):Null<TypeDefinition>
   {
     var messageProto = self.messages.get(fullName);
@@ -394,25 +409,28 @@ class Extension
     [
       for (field in messageProto.extension)
       {
-        if (field.type == TYPE_GROUP)
+        switch (field.type)
         {
-          #if neko
-          Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+          case ProtobufType.TYPE_GROUP:
           {
-            pos: makeMacroPosition(),
-            expr: EBlock([]),
+            #if neko
+            Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+            {
+              pos: makeMacroPosition(),
+              expr: EBlock([]),
+            }
+            #else
+            trace("TYPE_GROUP is unsupported!");
+            #end
+            continue;
           }
-          #else
-          trace("TYPE_GROUP is unsupported!");
-          #end
-          continue;
+          default:
         }
         getSetterDefinition(
           self,
           fullName,
           setterNameConverter,
           builderNameConverter,
-          enumClassNameConverter,
           writerNameConverter,
           field);
       }
@@ -430,6 +448,29 @@ class Extension
     };
   }
 
+  static function getTypeName(type:ProtobufType):String
+  {
+    return switch (type)
+    {
+      case ProtobufType.TYPE_DOUBLE: "TYPE_DOUBLE";
+      case ProtobufType.TYPE_FLOAT: "TYPE_FLOAT";
+      case ProtobufType.TYPE_INT64: "TYPE_INT64";
+      case ProtobufType.TYPE_UINT64: "TYPE_UINT64";
+      case ProtobufType.TYPE_INT32: "TYPE_INT32";
+      case ProtobufType.TYPE_FIXED64: "TYPE_FIXED64";
+      case ProtobufType.TYPE_BOOL: "TYPE_BOOL";
+      case ProtobufType.TYPE_STRING: "TYPE_STRING";
+      case ProtobufType.TYPE_BYTES: "TYPE_BYTES";
+      case ProtobufType.TYPE_UINT32: "TYPE_UINT32";
+      case ProtobufType.TYPE_FIXED32: "TYPE_FIXED32";
+      case ProtobufType.TYPE_SFIXED32: "TYPE_SFIXED32";
+      case ProtobufType.TYPE_SFIXED64: "TYPE_SFIXED64";
+      case ProtobufType.TYPE_SINT32: "TYPE_SINT32";
+      case ProtobufType.TYPE_SINT64: "TYPE_SINT64";
+      default: throw ProtobufError.BadDescriptor;
+    }
+  }
+
   static function getGetterDefinition(
     self:ProtoData,
     fullName:String,
@@ -437,7 +478,6 @@ class Extension
     messageNameConverter:NameConverter.MessageNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
     enumNameConverter:NameConverter.EnumNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     mergerNameConverter:NameConverter.UtilityNameConverter,
     field:FieldDescriptorProto):Field
   {
@@ -495,27 +535,28 @@ class Extension
                   expr: ENew(fieldBuilderTypePath, []),
                   pos: makeMacroPosition(),
                 };
-                macro if (unknownField.wireType == com.dongxiguo.protobuf.WireType.LENGTH_DELIMITED)
+                macro
                 {
-                  var bytesValue:haxe.io.Bytes = unknownField.value;
-                  var underlyingInput = new haxe.io.BytesInput(bytesValue);
-                  var input = new com.dongxiguo.protobuf.binaryFormat.LimitableBytesInput(underlyingInput, bytesValue.length);
+                  var bytesValue:haxe.io.Bytes = unknownField.toLengthDelimited();
+                  var input = new com.dongxiguo.protobuf.binaryFormat.LimitableBytesInput(bytesValue, bytesValue.length);
                   var fieldBuilder = $newFieldBuilderExpr;
                   $nestedMergerClassExpr.mergeFrom(fieldBuilder, input);
                   fieldBuilder;
                 }
-                else
-                {
-                  throw com.dongxiguo.protobuf.Error.InvalidWireType;
-                };
               }
               case ProtobufType.TYPE_ENUM:
               {
                 var resolvedFieldTypeName = ProtoData.resolve(self.enums, fullName, field.typeName);
-                var enumPackageExpr = ExprTools.toFieldExpr(enumClassNameConverter.getHaxePackage(resolvedFieldTypeName));
-                var enumClassName = enumClassNameConverter.getHaxeClassName(resolvedFieldTypeName);
-                var enumClassExpr = packageDotClass(enumPackageExpr, enumClassName);
-                macro $enumClassExpr.valueOf(unknownField.toVarint().toInt32());
+                {
+                  pos: makeMacroPosition(),
+                  expr: ENew(
+                    {
+                      params: [],
+                      pack: enumNameConverter.getHaxePackage(resolvedFieldTypeName),
+                      name: enumNameConverter.getHaxeEnumName(resolvedFieldTypeName),
+                    },
+                    [ macro unknownField.toVarint().toInt32(), ]),
+                }
               }
               default:
               {
@@ -542,7 +583,8 @@ class Extension
                     throw ProtobufError.InvalidWireType;
                   }
                 }
-                var toFunctionName = switch (Type.enumConstructor(field.type).split("_"))
+                var typeName:String = getTypeName(field.type);
+                var toFunctionName = switch (typeName.split("_"))
                 {
                   case [ "TYPE", upperCaseTypeName ]:
                   {
@@ -558,7 +600,7 @@ class Extension
             };
             switch (field.label)
             {
-              case LABEL_REQUIRED, LABEL_OPTIONAL:
+              case Label.LABEL_REQUIRED, Label.LABEL_OPTIONAL:
               {
                 var tagExpr =
                 {
@@ -568,9 +610,9 @@ class Extension
                 }
                 var defaultExpr = switch (field.label)
                 {
-                  case LABEL_REQUIRED:
+                  case Label.LABEL_REQUIRED:
                     macro throw com.dongxiguo.protobuf.Error.MissingRequiredFields;
-                  case LABEL_OPTIONAL:
+                  case Label.LABEL_OPTIONAL:
                     if (field.defaultValue == null)
                     {
                       macro null;
@@ -587,7 +629,7 @@ class Extension
                   return unknownField == null ? $defaultExpr : $toExpr;
                 }
               }
-              case LABEL_REPEATED:
+              case Label.LABEL_REPEATED:
               {
                 if (WireType.byType(field.type) == WireType.LENGTH_DELIMITED)
                 {
@@ -609,15 +651,21 @@ class Extension
                     case ProtobufType.TYPE_ENUM:
                     {
                       var resolvedFieldTypeName = ProtoData.resolve(self.enums, fullName, field.typeName);
-                      var enumPackageExpr = ExprTools.toFieldExpr(enumClassNameConverter.getHaxePackage(resolvedFieldTypeName));
-                      var enumClassName = enumClassNameConverter.getHaxeClassName(resolvedFieldTypeName);
-                      var enumClassExpr = packageDotClass(enumPackageExpr, enumClassName);
-                      macro $enumClassExpr.valueOf(
-                        com.dongxiguo.protobuf.binaryFormat.ReadUtils.readInt32(input));
+                      {
+                        pos: makeMacroPosition(),
+                        expr: ENew(
+                          {
+                            params: [],
+                            pack: enumNameConverter.getHaxePackage(resolvedFieldTypeName),
+                            name: enumNameConverter.getHaxeEnumName(resolvedFieldTypeName),
+                          },
+                          [ macro com.dongxiguo.protobuf.binaryFormat.ReadUtils.readInt32(input), ]),
+                      }
                     }
                     default:
                     {
-                      var readFunctionName = switch (Type.enumConstructor(field.type).split("_"))
+                      var typeName:String = getTypeName(field.type);
+                      var readFunctionName = switch (typeName.split("_"))
                       {
                         case [ "TYPE", upperCaseTypeName ]:
                         {
@@ -657,6 +705,10 @@ class Extension
                   }
                 }
               }
+              default:
+              {
+                throw ProtobufError.BadDescriptor;
+              }
             }
           }
         })
@@ -670,7 +722,6 @@ class Extension
     messageNameConverter:NameConverter.MessageNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
     enumNameConverter:NameConverter.EnumNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     mergerNameConverter:NameConverter.UtilityNameConverter):Null<TypeDefinition>
   {
     var fields:Array<Field> =
@@ -679,18 +730,22 @@ class Extension
       {
         for (field in file.extension)
         {
-          if (field.type == TYPE_GROUP)
+          switch (field.type)
           {
-            #if neko
-            Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+            case ProtobufType.TYPE_GROUP:
             {
-              pos: makeMacroPosition(),
-              expr: EBlock([]),
+              #if neko
+              Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+              {
+                pos: makeMacroPosition(),
+                expr: EBlock([]),
+              }
+              #else
+              trace("TYPE_GROUP is unsupported!");
+              #end
+              continue;
             }
-            #else
-            trace("TYPE_GROUP is unsupported!");
-            #end
-            continue;
+            default:
           }
           getGetterDefinition(
             self,
@@ -699,7 +754,6 @@ class Extension
             messageNameConverter,
             builderNameConverter,
             enumNameConverter,
-            enumClassNameConverter,
             mergerNameConverter,
             field);
         }
@@ -729,7 +783,6 @@ class Extension
     messageNameConverter:NameConverter.MessageNameConverter,
     builderNameConverter:NameConverter.MessageNameConverter,
     enumNameConverter:NameConverter.EnumNameConverter,
-    enumClassNameConverter:NameConverter.UtilityNameConverter,
     mergerNameConverter:NameConverter.UtilityNameConverter):Null<TypeDefinition>
   {
     var messageProto = self.messages.get(fullName);
@@ -741,18 +794,22 @@ class Extension
     [
       for (field in messageProto.extension)
       {
-        if (field.type == TYPE_GROUP)
+        switch (field.type)
         {
-          #if neko
-          Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+          case ProtobufType.TYPE_GROUP:
           {
-            pos: makeMacroPosition(),
-            expr: EBlock([]),
+            #if neko
+            Context.warning("TYPE_GROUP is unsupported!", makeMacroPosition());
+            {
+              pos: makeMacroPosition(),
+              expr: EBlock([]),
+            }
+            #else
+            trace("TYPE_GROUP is unsupported!");
+            #end
+            continue;
           }
-          #else
-          trace("TYPE_GROUP is unsupported!");
-          #end
-          continue;
+          default:
         }
         getGetterDefinition(
           self,
@@ -761,7 +818,6 @@ class Extension
           messageNameConverter,
           builderNameConverter,
           enumNameConverter,
-          enumClassNameConverter,
           mergerNameConverter,
           field);
       }
