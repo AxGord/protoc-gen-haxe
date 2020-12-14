@@ -138,7 +138,7 @@ class LimitableFileInput implements ILimitableInput
     return maxPosition = underlyingInput.tell() + value;
   }
 
-  public var limit(get_limit, set_limit):TYPE_UINT32;
+  public var limit(get, set):TYPE_UINT32;
 
 }
 

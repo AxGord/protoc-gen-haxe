@@ -10,7 +10,7 @@ class MessageOptions_Builder {
 	} else {
 		return __default_messageSetWireFormat;
 	}
-	@:isVar public var messageSetWireFormat(get_messageSetWireFormat,set_messageSetWireFormat):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var messageSetWireFormat(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	static var __default_noStandardDescriptorAccessor(null,never):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>=false;
 	inline function set_noStandardDescriptorAccessor(value) {
 		return noStandardDescriptorAccessor=value;
@@ -20,7 +20,7 @@ class MessageOptions_Builder {
 	} else {
 		return __default_noStandardDescriptorAccessor;
 	}
-	@:isVar public var noStandardDescriptorAccessor(get_noStandardDescriptorAccessor,set_noStandardDescriptorAccessor):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var noStandardDescriptorAccessor(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	public var uninterpretedOption(default,default):Array<com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.UninterpretedOption_Builder>;
 	public inline function new() {
 		this.uninterpretedOption=[];

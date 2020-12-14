@@ -41,5 +41,5 @@ interface ILimitableInput
   function checkedReadInt32():TYPE_INT32;
   function checkedReadByes(destination:TYPE_BYTES, offset:Int, length:Int):Int;
 
-  var limit(get_limit, set_limit):TYPE_UINT32;
+  var limit(get, set):TYPE_UINT32;
 }

@@ -38,7 +38,7 @@ import haxe.io.Bytes;
 
 using Type;
 
-#if haxe3
+#if (haxe3 || haxe4)
 import haxe.ds.IntMap;
 import haxe.ds.StringMap;
 #else
@@ -199,16 +199,16 @@ private typedef StringMap<Value> = Hash<Value>;
   public static inline function readSint64(input:ILimitableInput):Types.TYPE_SINT64
   {
     var beforeTransform = readInt64(input);
-    #if haxe3
+    #if (haxe3 || haxe4)
     var low = Types.TYPE_INT64.getLow(beforeTransform);
-    var high = Types.TYPE_INT64.getLow(beforeTransform);
+    var high = Types.TYPE_INT64.getHigh(beforeTransform);
     #else
     var low = Int32.toNativeInt(Types.TYPE_INT64.getLow(beforeTransform));
-    var high = Int32.toNativeInt(Types.TYPE_INT64.getLow(beforeTransform));
+    var high = Int32.toNativeInt(Types.TYPE_INT64.getHigh(beforeTransform));
     #end
     var transformedLow = ZigZag.decode64low(low, high);
     var transformedHigh = ZigZag.decode64high(low, high);
-    #if haxe3
+    #if (haxe3 || haxe4)
     return Types.TYPE_FIXED64.make(transformedLow, transformedHigh);
     #else
     return Types.TYPE_FIXED64.make(Int32.ofInt(transformedLow), Int32.ofInt(transformedHigh));
@@ -268,4 +268,3 @@ private typedef StringMap<Value> = Hash<Value>;
 typedef FieldMap<Builder> = IntMap<Builder->ILimitableInput->Void>;
 
 typedef EnumValueMap<E:EnumValue> = IntMap<E>;
-

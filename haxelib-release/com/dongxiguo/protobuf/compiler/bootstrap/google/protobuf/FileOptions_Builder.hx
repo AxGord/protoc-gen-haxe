@@ -12,7 +12,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_javaMultipleFiles;
 	}
-	@:isVar public var javaMultipleFiles(get_javaMultipleFiles,set_javaMultipleFiles):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var javaMultipleFiles(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	static var __default_javaGenerateEqualsAndHash(null,never):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>=false;
 	inline function set_javaGenerateEqualsAndHash(value) {
 		return javaGenerateEqualsAndHash=value;
@@ -22,7 +22,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_javaGenerateEqualsAndHash;
 	}
-	@:isVar public var javaGenerateEqualsAndHash(get_javaGenerateEqualsAndHash,set_javaGenerateEqualsAndHash):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var javaGenerateEqualsAndHash(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	static var __default_optimizeFor(null,never):StdTypes.Null<com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fileOptions.OptimizeMode>=com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fileOptions.OptimizeMode.SPEED;
 	inline function set_optimizeFor(value) {
 		return optimizeFor=value;
@@ -32,7 +32,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_optimizeFor;
 	}
-	@:isVar public var optimizeFor(get_optimizeFor,set_optimizeFor):StdTypes.Null<com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fileOptions.OptimizeMode>;
+	@:isVar public var optimizeFor(get, set):StdTypes.Null<com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fileOptions.OptimizeMode>;
 	@:optional public var goPackage(default,default):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_STRING>;
 	static var __default_ccGenericServices(null,never):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>=false;
 	inline function set_ccGenericServices(value) {
@@ -43,7 +43,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_ccGenericServices;
 	}
-	@:isVar public var ccGenericServices(get_ccGenericServices,set_ccGenericServices):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var ccGenericServices(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	static var __default_javaGenericServices(null,never):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>=false;
 	inline function set_javaGenericServices(value) {
 		return javaGenericServices=value;
@@ -53,7 +53,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_javaGenericServices;
 	}
-	@:isVar public var javaGenericServices(get_javaGenericServices,set_javaGenericServices):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var javaGenericServices(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	static var __default_pyGenericServices(null,never):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>=false;
 	inline function set_pyGenericServices(value) {
 		return pyGenericServices=value;
@@ -63,7 +63,7 @@ class FileOptions_Builder {
 	} else {
 		return __default_pyGenericServices;
 	}
-	@:isVar public var pyGenericServices(get_pyGenericServices,set_pyGenericServices):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
+	@:isVar public var pyGenericServices(get, set):StdTypes.Null<com.dongxiguo.protobuf.Types.TYPE_BOOL>;
 	public var uninterpretedOption(default,default):Array<com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.UninterpretedOption_Builder>;
 	public inline function new() {
 		this.uninterpretedOption=[];

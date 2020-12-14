@@ -34,8 +34,14 @@ import com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptor
 import com.dongxiguo.protobuf.WireType;
 import haxe.macro.Context;
 import haxe.macro.Expr;
-import haxe.macro.ExprTools;
 import haxe.PosInfos;
+
+#if (haxe_ver > 3.101)
+typedef ExTools = haxe.macro.MacroStringTools;
+#else
+typedef ExTools = haxe.macro.ExprTools;
+#end
+
 using Lambda;
 
 private typedef ProtobufType = com.dongxiguo.protobuf.compiler.bootstrap.google.protobuf.fieldDescriptorProto.Type;
@@ -99,8 +105,7 @@ class Extension
           };
           var nestedWriterPackage =
             writerNameConverter.getHaxePackage(resolvedFieldTypeName);
-          var nestedWriterPackageExpr =
-            ExprTools.toFieldExpr(nestedWriterPackage);
+          var nestedWriterPackageExpr = ExTools.toFieldExpr(nestedWriterPackage);
           var nestedWriterName =
             writerNameConverter.getHaxeClassName(resolvedFieldTypeName);
           var nestedWriterExpr = packageDotClass(nestedWriterPackageExpr, nestedWriterName);
@@ -525,8 +530,7 @@ class Extension
                 };
                 var nestedMergerPackage =
                   mergerNameConverter.getHaxePackage(resolvedFieldTypeName);
-                var nestedMergerPackageExpr =
-                  ExprTools.toFieldExpr(nestedMergerPackage);
+                var nestedMergerPackageExpr = ExTools.toFieldExpr(nestedMergerPackage);
                 var nestedMergerName =
                   mergerNameConverter.getHaxeClassName(resolvedFieldTypeName);
                 var nestedMergerClassExpr = packageDotClass(nestedMergerPackageExpr, nestedMergerName);

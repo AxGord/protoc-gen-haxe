@@ -42,10 +42,14 @@ import haxe.macro.Expr;
 #if neko
 import haxe.macro.Context;
 #end
-import haxe.macro.ExprTools;
+#if (haxe_ver > 3.101)
+typedef ExTools = haxe.macro.MacroStringTools;
+#else
+typedef ExTools = haxe.macro.ExprTools;
+#end
 import haxe.PosInfos;
 
-#if haxe3
+#if (haxe3 || haxe4)
 import haxe.ds.IntMap;
 import haxe.ds.StringMap;
 #else
@@ -91,7 +95,10 @@ class BinaryFormat
 
   macro static function makeMacroPosition():ExprOf<Position>
   {
-    var positionExpr = Context.makeExpr(Context.getPosInfos(Context.currentPos()), Context.currentPos());
+    var positionExpr = haxe.macro.Context.makeExpr(
+      haxe.macro.Context.getPosInfos(haxe.macro.Context.currentPos()),
+      haxe.macro.Context.currentPos()
+    );
     if (haxe.macro.Context.defined("macro"))
     {
       return macro haxe.macro.Context.makePosition($positionExpr);
@@ -193,8 +200,7 @@ class BinaryFormat
           };
           var nestedMergerPackage =
             mergerNameConverter.getHaxePackage(resolvedFieldTypeName);
-          var nestedMergerPackageExpr =
-            ExprTools.toFieldExpr(nestedMergerPackage);
+          var nestedMergerPackageExpr = ExTools.toFieldExpr(nestedMergerPackage);
           var nestedMergerName =
             mergerNameConverter.getHaxeClassName(resolvedFieldTypeName);
           var newFieldBuilderExpr =
@@ -584,8 +590,7 @@ class BinaryFormat
                           var resolvedFieldTypeName = ProtoData.resolve(self.messages, fullName, field.typeName);
                           var nestedWriterPackage =
                             writerNameConverter.getHaxePackage(resolvedFieldTypeName);
-                          var nestedWriterPackageExpr =
-                            ExprTools.toFieldExpr(nestedWriterPackage);
+                          var nestedWriterPackageExpr = ExTools.toFieldExpr(nestedWriterPackage);
                           var nestedWriterName =
                             writerNameConverter.getHaxeClassName(resolvedFieldTypeName);
                           macro
@@ -791,4 +796,3 @@ class BinaryFormat
   }
 
 }
-
